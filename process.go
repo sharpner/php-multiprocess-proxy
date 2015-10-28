@@ -40,7 +40,8 @@ func (pg *phpProcessGroup) spawn() {
 	port := nextPort()
 	p.port = port
 
-	args := []string{"-S", fmt.Sprintf("0.0.0.0:%d", port), pg.script}
+	log.Println("starting new process.")
+	args := []string{"-S", fmt.Sprintf("%s:%d", BindIP, port), pg.script}
 	go func(complete chan bool) {
 		cmd := exec.Command("php", args...)
 		go clean(complete, cmd)
@@ -53,7 +54,6 @@ func (pg *phpProcessGroup) spawn() {
 	pg.Lock()
 	defer pg.Unlock()
 	time.Sleep(TimeOut * time.Millisecond)
-	log.Println("new process started.")
 	a := append(pg.processes, p)
 	pg.processes = a
 }
@@ -78,7 +78,7 @@ func (p *phpProcess) stop() {
 }
 
 func nextPort() int {
-	l, err := net.Listen("tcp4", ":0")
+	l, err := net.Listen(BindProtocol, ":0")
 	if err != nil {
 		log.Print(err)
 	}

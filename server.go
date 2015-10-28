@@ -13,6 +13,16 @@ import (
 const (
 	//TimeOut waits for the php server process
 	TimeOut = 240
+	//NumProcesses is the total number of waiting php servers
+	NumProcesses = 7
+	//BindIP on which the server listens
+	BindIP = "0.0.0.0"
+	//BindProtocol is the listening protocol
+	BindProtocol = "tcp4"
+	//ProxyIP on which the php server listens
+	ProxyIP = "localhost"
+	//ProxyProtocol the proxied protocol
+	ProxyProtocol = "http"
 )
 
 type redirectNotAnError error
@@ -30,16 +40,17 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 
 	p := pg.next()
 	if p == nil {
-		panic("no more processes")
+		panic("out of processes")
 	}
 
 	defer func(p *phpProcess) {
 		go p.stop()
 	}(p)
 
-	log.Printf("child request url http://localhost:%d%s\n", p.port, r.RequestURI)
+	requestURI := fmt.Sprintf("%s://%s:%d%s", ProxyProtocol, ProxyIP, p.port, r.RequestURI)
+	log.Printf("child request url %s \n", requestURI)
 
-	req, err := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%d%s", p.port, r.RequestURI), r.Body)
+	req, err := http.NewRequest(r.Method, requestURI, r.Body)
 	if err != nil {
 		log.Print(err)
 		return
@@ -99,14 +110,14 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage server port filename ")
+		fmt.Println("Usage server port filename")
 		return
 	}
 	file := os.Args[2]
 
 	pg := newProcessGroup(file)
-	for i := 0; i < 5; i++ {
-		pg.spawn()
+	for i := 0; i < NumProcesses; i++ {
+		go pg.spawn()
 	}
 
 	pg.spawn()
@@ -115,5 +126,8 @@ func main() {
 		phpHandler(pg, w, r)
 	})
 	port := os.Args[1]
+
+	log.Printf("Serving %s on :%s\n", os.Args[2], os.Args[1])
+
 	http.ListenAndServe(":"+port, nil)
 }
