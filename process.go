@@ -58,13 +58,19 @@ func (pg *phpProcessGroup) spawn() {
 	pg.processes = a
 }
 
-func (pg *phpProcessGroup) next() *phpProcess {
+func (pg *phpProcessGroup) next() (p *phpProcess) {
 	pg.Lock()
 	defer pg.Unlock()
-	p, a := pg.processes[0], pg.processes[1:]
+	defer func() {
+		if r := recover(); r != nil {
+			p = nil
+		}
+	}()
+
+	p, a := &pg.processes[0], pg.processes[1:]
 	pg.processes = a
 	go pg.spawn()
-	return &p
+	return p
 }
 
 type phpProcess struct {
