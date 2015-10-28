@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	//TimeOut waits for the php server process
-	TimeOut = 140
+	//TimeOut in ms waits for the php server process
+	TimeOut = 90
 	//NumProcesses is the total number of waiting php servers
 	NumProcesses = 7
 	//BindIP on which the server listens
@@ -40,6 +40,13 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 
 	p := pg.next()
 	if p == nil {
+		// we could spawn more processes here
+		// but if you have this error often
+		// its better to increase the queue size
+		// and decrease the timeout
+		// since this only happens if you can answer your requests
+		// faster on average than the time it takes to start a php server
+		// it's currently only reproducible through a local DOS :P
 		panic("out of processes")
 	}
 
