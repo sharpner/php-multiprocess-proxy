@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"time"
@@ -71,7 +72,17 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := &http.Client{}
+	jarCopy, err := cookiejar.New(nil)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	jarCopy.SetCookies(r.URL, r.Cookies())
+
+	client := &http.Client{
+		Jar: jarCopy,
+	}
 	req.Header = r.Header
 
 	log.Println("Making request")
