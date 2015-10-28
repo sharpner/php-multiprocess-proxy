@@ -15,7 +15,7 @@ import (
 func nextPort() int {
 	l, err := net.Listen("tcp4", ":0")
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 	}
 	defer l.Close()
 
@@ -62,13 +62,13 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 
 	req, err := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%d%s", port, r.RequestURI), r.Body)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 		return
 	}
 
 	jarCopy, err := cookiejar.New(nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 		return
 	}
 
@@ -82,13 +82,7 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 	log.Println("Making request")
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
-		return
-	}
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
 		return
 	}
 
@@ -96,8 +90,19 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(key, resp.Header.Get(key))
 	}
 
+	defer func(complete chan bool) {
+		complete <- true
+	}(complete)
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Print(err)
+		w.Write([]byte{})
+		return
+	}
+
+	w.WriteHeader(resp.StatusCode)
 	w.Write(data)
-	complete <- true
 }
 
 func main() {
