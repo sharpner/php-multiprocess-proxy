@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -26,7 +27,13 @@ func noRedirect(req *http.Request, via []*http.Request) error {
 	return err
 }
 
+type phpProcessGroup struct {
+	sync.Mutex
+	processes []phpProcess
+}
+
 type phpProcess struct {
+	process *exec.Cmd
 }
 
 func nextPort() int {
