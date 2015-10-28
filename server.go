@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
-	"os/exec"
-	"sync"
-	"time"
 )
 
 const (
@@ -27,64 +23,20 @@ func noRedirect(req *http.Request, via []*http.Request) error {
 	return err
 }
 
-type phpProcessGroup struct {
-	sync.Mutex
-	processes []phpProcess
-}
-
-type phpProcess struct {
-	process *exec.Cmd
-}
-
-func nextPort() int {
-	l, err := net.Listen("tcp4", ":0")
-	if err != nil {
-		log.Print(err)
-	}
-	defer l.Close()
-
-	x, _ := l.Addr().(*net.TCPAddr)
-
-	return x.Port
-}
-
-func clean(complete chan bool, c *exec.Cmd) {
-	for {
-		select {
-		case <-complete:
-			{
-				go func() {
-					if c.Process != nil {
-						c.Process.Kill()
-					}
-				}()
-			}
-		}
-	}
-}
-
-func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
-	port := nextPort()
-	log.Println(port)
-	args := []string{"-S", fmt.Sprintf("0.0.0.0:%d", port), script}
-
+func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 	complete := make(chan bool)
 
-	log.Printf("child request url http://localhost:%d%s\n", port, r.RequestURI)
 	log.Println("starting server")
-	go func(complete chan bool) {
-		cmd := exec.Command("php", args...)
-		go clean(complete, cmd)
-		if err := cmd.Run(); err != nil {
-			log.Println(err.Error())
-			return
-		}
 
-	}(complete)
+	p := pg.next()
+	if p == nil {
+		panic("no more processes")
+	}
 
-	time.Sleep(TimeOut * time.Millisecond)
+	defer p.stop()
+	log.Printf("child request url http://localhost:%d%s\n", p.port, r.RequestURI)
 
-	req, err := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%d%s", port, r.RequestURI), r.Body)
+	req, err := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%d%s", p.port, r.RequestURI), r.Body)
 	if err != nil {
 		log.Print(err)
 		return
@@ -150,8 +102,16 @@ func main() {
 		return
 	}
 	file := os.Args[2]
+
+	pg := newProcessGroup(file)
+	for i := 0; i < 5; i++ {
+		pg.spawn()
+	}
+
+	pg.spawn()
+
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		phpHandler(file, w, r)
+		phpHandler(pg, w, r)
 	})
 	port := os.Args[1]
 	http.ListenAndServe(":"+port, nil)
