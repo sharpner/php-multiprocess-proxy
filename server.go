@@ -96,13 +96,14 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	if len(os.Args) < 1 {
-		fmt.Println("Usage server filename")
+	if len(os.Args) < 2 {
+		fmt.Println("Usage server port filename ")
 		return
 	}
-	file := os.Args[1]
+	file := os.Args[2]
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		phpHandler(file, w, r)
 	})
-	http.ListenAndServe(":10000", nil)
+	port := os.Args[1]
+	http.ListenAndServe(":"+port, nil)
 }
