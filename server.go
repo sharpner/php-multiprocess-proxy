@@ -30,15 +30,9 @@ func clean(complete chan bool, c *exec.Cmd) {
 		case <-complete:
 			{
 				go func() {
-					time.Sleep(100)
-					/*
-					 *cmd := exec.Command("kill", fmt.Sprintf("%d", c.Process.Pid))
-					 *if err := cmd.Run(); err != nil {
-					 *  log.Fatal(err)
-					 *  return
-					 *}
-					 */
-					log.Printf("cleaning %d.\n", c.Process.Pid)
+					if c.Process != nil {
+						c.Process.Kill()
+					}
 				}()
 			}
 		}
@@ -58,7 +52,7 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 		cmd := exec.Command("php", args...)
 		go clean(complete, cmd)
 		if err := cmd.Run(); err != nil {
-			log.Fatal(err)
+			log.Println(err.Error())
 			return
 		}
 
