@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+const (
+	//TimeOut waits for the php server process
+	TimeOut = 240
+)
+
 type redirectNotAnError error
 
 func noRedirect(req *http.Request, via []*http.Request) error {
@@ -70,7 +75,7 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 
 	}(complete)
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(TimeOut * time.Millisecond)
 
 	req, err := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%d%s", port, r.RequestURI), r.Body)
 	if err != nil {
