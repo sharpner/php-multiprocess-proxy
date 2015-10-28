@@ -33,7 +33,10 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		panic("no more processes")
 	}
 
-	defer p.stop()
+	defer func(p *phpProcess) {
+		go p.stop()
+	}(p)
+
 	log.Printf("child request url http://localhost:%d%s\n", p.port, r.RequestURI)
 
 	req, err := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%d%s", p.port, r.RequestURI), r.Body)
@@ -81,9 +84,7 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(key, resp.Header.Get(key))
 	}
 
-	defer func(complete chan bool) {
-		complete <- true
-	}(complete)
+	defer p.stop()
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {

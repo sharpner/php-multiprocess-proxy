@@ -53,6 +53,7 @@ func (pg *phpProcessGroup) spawn() {
 	pg.Lock()
 	defer pg.Unlock()
 	time.Sleep(TimeOut * time.Millisecond)
+	log.Println("new process started.")
 	a := append(pg.processes, p)
 	pg.processes = a
 }
