@@ -12,7 +12,7 @@ import (
 
 const (
 	//TimeOut waits for the php server process
-	TimeOut = 240
+	TimeOut = 140
 	//NumProcesses is the total number of waiting php servers
 	NumProcesses = 7
 	//BindIP on which the server listens
