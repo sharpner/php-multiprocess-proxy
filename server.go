@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,6 +12,17 @@ import (
 	"os/exec"
 	"time"
 )
+
+type redirectNotAnError error
+
+func noRedirect(req *http.Request, via []*http.Request) error {
+	var err redirectNotAnError
+	err = errors.New("do not follow redirect please")
+	return err
+}
+
+type phpProcess struct {
+}
 
 func nextPort() int {
 	l, err := net.Listen("tcp4", ":0")
@@ -75,14 +87,29 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 	jarCopy.SetCookies(r.URL, r.Cookies())
 
 	client := &http.Client{
-		Jar: jarCopy,
+		Jar:           jarCopy,
+		CheckRedirect: noRedirect,
 	}
 	req.Header = r.Header
 
 	log.Println("Making request")
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Print(err)
+		if _, ok := err.(redirectNotAnError); ok {
+			for key := range resp.Header {
+				w.Header().Set(key, resp.Header.Get(key))
+			}
+
+			w.WriteHeader(resp.StatusCode)
+			w.Write([]byte{})
+			return
+		}
+
+		defer func(complete chan bool) {
+			complete <- true
+		}(complete)
+
+		log.Fatal(err)
 		return
 	}
 
