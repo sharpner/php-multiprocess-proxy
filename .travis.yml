@@ -5,18 +5,20 @@ go:
   - 1.5
   - tip
 
-sudo: false
+sudo: true
 
 before_install: 
+  - sudo add-apt-repository ppa:ondrej/php5 -y
   - sudo apt-get update -qq
-  - sudo apt-get install -y php5-cli 
+  - sudo apt-get install -y php5 
   - mkdir bin/
   - curl -sS https://getcomposer.org/installer | php -- --install-dir=bin
-	- cd test && ../bin/composer install 
+  - cd test && ../bin/composer.phar install && cd .. 
 
 install: 
   - go get -t -d -v ./...
   - go get github.com/onsi/ginkgo/ginkgo
 
-script:
-	- ginkgo -r
+script: 
+  - php -v
+  - ginkgo -r
