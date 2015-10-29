@@ -34,9 +34,10 @@ func noRedirect(req *http.Request, via []*http.Request) error {
 }
 
 func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
-	complete := make(chan bool)
-
 	log.Println("starting server")
+	if pg == nil {
+		panic("pg must be set")
+	}
 
 	p := pg.next()
 	if p == nil {
@@ -90,11 +91,6 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		defer func(complete chan bool) {
-			complete <- true
-		}(complete)
-
-		log.Fatal(err)
 		return
 	}
 
