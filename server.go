@@ -33,13 +33,13 @@ func noRedirect(req *http.Request, via []*http.Request) error {
 	return err
 }
 
-func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
+func phpHandler(pg ProcessGroup, w http.ResponseWriter, r *http.Request) {
 	log.Println("starting server")
 	if pg == nil {
 		panic("pg must be set")
 	}
 
-	p := pg.next()
+	p := pg.Next()
 	if p == nil {
 		// we could spawn more processes here
 		// but if you have this error often
@@ -51,12 +51,11 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		panic("out of processes")
 	}
 
-	defer func(p *phpProcess) {
-		log.Printf("Stopping %d", p.port)
-		go p.stop()
+	defer func(p Process) {
+		go p.Stop()
 	}(p)
 
-	requestURI := fmt.Sprintf("%s://%s:%d%s", ProxyProtocol, ProxyIP, p.port, r.RequestURI)
+	requestURI := fmt.Sprintf("%s://%s:%d%s", ProxyProtocol, ProxyIP, p.Port(), r.RequestURI)
 	log.Printf("child request url %s \n", requestURI)
 
 	req, err := http.NewRequest(r.Method, requestURI, r.Body)
@@ -79,8 +78,6 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Header = r.Header
-
-	fmt.Printf("%#v", req)
 
 	log.Println("Making request")
 	resp, err := client.Do(req)
@@ -122,21 +119,20 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 }
 
 //NewPHPHTTPHandlerFunc returns a php proxy handler
-func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, error) {
+func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, ProcessGroup, error) {
 	if _, err := os.Stat(filename); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	pg := newProcessGroup(filename)
-	for i := 0; i < NumProcesses; i++ {
-		go pg.spawn()
+	for i := 0; i < NumProcesses-1; i++ {
+		go pg.Spawn()
 	}
 
-	pg.spawn()
-	defer pg.clear()
+	pg.Spawn()
 	return func(w http.ResponseWriter, r *http.Request) {
 		phpHandler(pg, w, r)
-	}, nil
+	}, pg, nil
 }
 
 func main() {
@@ -145,14 +141,21 @@ func main() {
 		return
 	}
 
-	phpFunc, err := NewPHPHTTPHandlerFunc(os.Args[2])
+	phpFunc, pg, err := NewPHPHTTPHandlerFunc(os.Args[2])
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if pg != nil {
+		defer pg.Clear()
 	}
 
 	http.HandleFunc("/", phpFunc)
 
 	log.Printf("Serving %s on :%s\n", os.Args[2], os.Args[1])
 
-	http.ListenAndServe(":"+os.Args[1], nil)
+	err = http.ListenAndServe(":"+os.Args[1], nil)
+	if err != nil {
+		panic(err)
+	}
 }

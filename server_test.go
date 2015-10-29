@@ -16,18 +16,19 @@ var _ = Describe("Server", func() {
 		var (
 			rec     *httptest.ResponseRecorder
 			handler http.HandlerFunc
+			pg      ProcessGroup
 		)
 
 		BeforeSuite(func() {
 			var err error
 			rec = httptest.NewRecorder()
-			handler, err = NewPHPHTTPHandlerFunc("test/index.php")
+			handler, pg, err = NewPHPHTTPHandlerFunc("test/index.php")
 			time.Sleep(200 * time.Millisecond)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		AfterSuite(func() {
-
+			pg.Clear()
 		})
 
 		It("Should welcome you with hello world", func() {
