@@ -12,7 +12,7 @@ import (
 
 const (
 	//TimeOut in ms waits for the php server process
-	TimeOut = 90
+	TimeOut = 130
 	//NumProcesses is the total number of waiting php servers
 	NumProcesses = 7
 	//BindIP on which the server listens
@@ -52,6 +52,7 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func(p *phpProcess) {
+		log.Printf("Stopping %d", p.port)
 		go p.stop()
 	}(p)
 
@@ -76,18 +77,27 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		Jar:           jarCopy,
 		CheckRedirect: noRedirect,
 	}
+
 	req.Header = r.Header
+
+	fmt.Printf("%#v", req)
 
 	log.Println("Making request")
 	resp, err := client.Do(req)
 	if err != nil {
 		if _, ok := err.(redirectNotAnError); ok {
+			if resp == nil {
+				w.WriteHeader(http.StatusBadGateway)
+				w.Write([]byte{})
+				return
+			}
+
 			for key := range resp.Header {
 				w.Header().Set(key, resp.Header.Get(key))
 			}
-
 			w.WriteHeader(resp.StatusCode)
 			w.Write([]byte{})
+
 			return
 		}
 
@@ -98,14 +108,14 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(key, resp.Header.Get(key))
 	}
 
-	defer p.stop()
-
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Print(err)
 		w.Write([]byte{})
 		return
 	}
+
+	defer resp.Body.Close()
 
 	w.WriteHeader(resp.StatusCode)
 	w.Write(data)
@@ -123,6 +133,7 @@ func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, error) {
 	}
 
 	pg.spawn()
+	defer pg.clear()
 	return func(w http.ResponseWriter, r *http.Request) {
 		phpHandler(pg, w, r)
 	}, nil

@@ -73,6 +73,19 @@ func (pg *phpProcessGroup) next() (p *phpProcess) {
 	return p
 }
 
+func (pg *phpProcessGroup) clear() {
+	pg.Lock()
+	defer pg.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+		}
+	}()
+
+	for _, p := range pg.processes {
+		p.stop()
+	}
+}
+
 type phpProcess struct {
 	process *exec.Cmd
 	done    chan bool

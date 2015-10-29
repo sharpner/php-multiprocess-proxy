@@ -1,0 +1,22 @@
+language: go
+
+go:
+  - 1.4
+  - 1.5
+  - tip
+
+sudo: false
+
+before_install: 
+  - sudo apt-get update -qq
+  - sudo apt-get install -y php5-cli 
+  - mkdir bin/
+  - curl -sS https://getcomposer.org/installer | php -- --install-dir=bin
+	- cd test && ../bin/composer install 
+
+install: 
+  - go get -t -d -v ./...
+  - go get github.com/onsi/ginkgo/ginkgo
+
+script:
+	- ginkgo -r
