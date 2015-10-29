@@ -5,17 +5,24 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
-	"os/exec"
-	"time"
 )
 
 const (
-	//TimeOut waits for the php server process
-	TimeOut = 240
+	//TimeOut in ms waits for the php server process
+	TimeOut = 90
+	//NumProcesses is the total number of waiting php servers
+	NumProcesses = 7
+	//BindIP on which the server listens
+	BindIP = "0.0.0.0"
+	//BindProtocol is the listening protocol
+	BindProtocol = "tcp4"
+	//ProxyIP on which the php server listens
+	ProxyIP = "localhost"
+	//ProxyProtocol the proxied protocol
+	ProxyProtocol = "http"
 )
 
 type redirectNotAnError error
@@ -26,58 +33,32 @@ func noRedirect(req *http.Request, via []*http.Request) error {
 	return err
 }
 
-type phpProcess struct {
-}
-
-func nextPort() int {
-	l, err := net.Listen("tcp4", ":0")
-	if err != nil {
-		log.Print(err)
-	}
-	defer l.Close()
-
-	x, _ := l.Addr().(*net.TCPAddr)
-
-	return x.Port
-}
-
-func clean(complete chan bool, c *exec.Cmd) {
-	for {
-		select {
-		case <-complete:
-			{
-				go func() {
-					if c.Process != nil {
-						c.Process.Kill()
-					}
-				}()
-			}
-		}
-	}
-}
-
-func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
-	port := nextPort()
-	log.Println(port)
-	args := []string{"-S", fmt.Sprintf("0.0.0.0:%d", port), script}
-
-	complete := make(chan bool)
-
-	log.Printf("child request url http://localhost:%d%s\n", port, r.RequestURI)
+func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 	log.Println("starting server")
-	go func(complete chan bool) {
-		cmd := exec.Command("php", args...)
-		go clean(complete, cmd)
-		if err := cmd.Run(); err != nil {
-			log.Println(err.Error())
-			return
-		}
+	if pg == nil {
+		panic("pg must be set")
+	}
 
-	}(complete)
+	p := pg.next()
+	if p == nil {
+		// we could spawn more processes here
+		// but if you have this error often
+		// its better to increase the queue size
+		// and decrease the timeout
+		// since this only happens if you can answer your requests
+		// faster on average than the time it takes to start a php server
+		// it's currently only reproducible through a local DOS :P
+		panic("out of processes")
+	}
 
-	time.Sleep(TimeOut * time.Millisecond)
+	defer func(p *phpProcess) {
+		go p.stop()
+	}(p)
 
-	req, err := http.NewRequest(r.Method, fmt.Sprintf("http://localhost:%d%s", port, r.RequestURI), r.Body)
+	requestURI := fmt.Sprintf("%s://%s:%d%s", ProxyProtocol, ProxyIP, p.port, r.RequestURI)
+	log.Printf("child request url %s \n", requestURI)
+
+	req, err := http.NewRequest(r.Method, requestURI, r.Body)
 	if err != nil {
 		log.Print(err)
 		return
@@ -110,11 +91,6 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		defer func(complete chan bool) {
-			complete <- true
-		}(complete)
-
-		log.Fatal(err)
 		return
 	}
 
@@ -122,9 +98,7 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(key, resp.Header.Get(key))
 	}
 
-	defer func(complete chan bool) {
-		complete <- true
-	}(complete)
+	defer p.stop()
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -137,15 +111,37 @@ func phpHandler(script string, w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+//NewPHPHTTPHandlerFunc returns a php proxy handler
+func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, error) {
+	if _, err := os.Stat(filename); err != nil {
+		return nil, err
+	}
+
+	pg := newProcessGroup(filename)
+	for i := 0; i < NumProcesses; i++ {
+		go pg.spawn()
+	}
+
+	pg.spawn()
+	return func(w http.ResponseWriter, r *http.Request) {
+		phpHandler(pg, w, r)
+	}, nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage server port filename ")
+		fmt.Println("Usage server port filename")
 		return
 	}
-	file := os.Args[2]
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		phpHandler(file, w, r)
-	})
-	port := os.Args[1]
-	http.ListenAndServe(":"+port, nil)
+
+	phpFunc, err := NewPHPHTTPHandlerFunc(os.Args[2])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.HandleFunc("/", phpFunc)
+
+	log.Printf("Serving %s on :%s\n", os.Args[2], os.Args[1])
+
+	http.ListenAndServe(":"+os.Args[1], nil)
 }
