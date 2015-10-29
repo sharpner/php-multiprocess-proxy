@@ -115,26 +115,37 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage server port filename")
-		return
+//NewPHPHTTPHandlerFunc returns a php proxy handler
+func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, error) {
+	if _, err := os.Stat(filename); err != nil {
+		return nil, err
 	}
-	file := os.Args[2]
 
-	pg := newProcessGroup(file)
+	pg := newProcessGroup(filename)
 	for i := 0; i < NumProcesses; i++ {
 		go pg.spawn()
 	}
 
 	pg.spawn()
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		phpHandler(pg, w, r)
-	})
-	port := os.Args[1]
+	}, nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage server port filename")
+		return
+	}
+
+	phpFunc, err := NewPHPHTTPHandlerFunc(os.Args[2])
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	http.HandleFunc("/", phpFunc)
 
 	log.Printf("Serving %s on :%s\n", os.Args[2], os.Args[1])
 
-	http.ListenAndServe(":"+port, nil)
+	http.ListenAndServe(":"+os.Args[1], nil)
 }
