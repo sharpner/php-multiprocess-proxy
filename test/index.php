@@ -13,5 +13,9 @@ $app->get('/301', function() use($app) {
   throw new Exception\HttpException(301, '');
 }); 
 
+$app->get('/301invalid', function() use($app) {
+  throw new Exception\HttpException(301, '');
+}); 
+
 
 $app->run();

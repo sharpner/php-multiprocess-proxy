@@ -44,6 +44,16 @@ var _ = Describe("Server", func() {
 			Expect(rec.Body.Bytes()).To(ContainSubstring("Hello fisch"))
 		})
 
+		It("Should return 301 but has no location header", func() {
+			requestURI := "/301invalid"
+			req, err := http.NewRequest("GET", requestURI, nil)
+			req.RequestURI = requestURI
+			Expect(err).ToNot(HaveOccurred())
+			handler.ServeHTTP(rec, req)
+			Expect(rec.Code).To(Equal(http.StatusBadGateway))
+			Expect(rec.Body.Bytes()).To(BeNil())
+		})
+
 		It("Should return 301", func() {
 			requestURI := "/301"
 			req, err := http.NewRequest("GET", requestURI, nil)
