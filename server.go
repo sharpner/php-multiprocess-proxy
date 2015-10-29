@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 )
 
@@ -82,6 +83,10 @@ func phpHandler(pg ProcessGroup, w http.ResponseWriter, r *http.Request) {
 	log.Println("Making request")
 	resp, err := client.Do(req)
 	if err != nil {
+		if urlError, ok := err.(*url.Error); ok {
+			log.Println(urlError.Err)
+		}
+
 		if _, ok := err.(redirectNotAnError); ok {
 			if resp == nil {
 				w.WriteHeader(http.StatusBadGateway)
