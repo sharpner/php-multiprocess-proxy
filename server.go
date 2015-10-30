@@ -41,7 +41,7 @@ func phpHandler(pg ProcessGroup, w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := pg.Next()
-	if p == nil {
+	if p == nilProcess {
 		// we could spawn more processes here
 		// but if you have this error often
 		// its better to increase the queue size
@@ -135,6 +135,7 @@ func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, ProcessGroup, err
 	}
 
 	pg.Spawn()
+	log.Println("All processes spawned.")
 	return func(w http.ResponseWriter, r *http.Request) {
 		phpHandler(pg, w, r)
 	}, pg, nil

@@ -1,15 +1,34 @@
 package main_test
 
 import (
+	"log"
 	"net/http"
 	"net/http/httptest"
-	"time"
+	"os/exec"
+	"strconv"
+	"strings"
 
 	. "github.com/sharpner/php-multiprocess-proxy"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
+
+func getRunningProcessCount() int {
+	cmd := "ps ax | grep test/index | grep -v grep | wc -l"
+	out, err := exec.Command("bash", "-c", cmd).Output()
+	if err != nil {
+		return -1
+	}
+
+	countString := strings.TrimSpace(string(out))
+	count, err := strconv.Atoi(countString)
+	if err != nil {
+		return -1
+	}
+
+	return count
+}
 
 var _ = Describe("Server", func() {
 	Context("test all basic http request types", func() {
@@ -26,22 +45,24 @@ var _ = Describe("Server", func() {
 		BeforeSuite(func() {
 			var err error
 			handler, pg, err = NewPHPHTTPHandlerFunc("test/index.php")
-			time.Sleep(200 * time.Millisecond)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		AfterSuite(func() {
+			log.Println("Running after Suite")
 			pg.Clear()
 		})
 
 		It("Should welcome you with hello world", func() {
 			requestURI := "/hello/fisch"
+			Expect(getRunningProcessCount()).To(Equal(7))
 			req, err := http.NewRequest("GET", requestURI, nil)
 			req.RequestURI = requestURI
 			Expect(err).ToNot(HaveOccurred())
 			handler.ServeHTTP(rec, req)
 			Expect(rec.Code).To(Equal(http.StatusOK))
 			Expect(rec.Body.Bytes()).To(ContainSubstring("Hello fisch"))
+			Expect(getRunningProcessCount()).To(Equal(7))
 		})
 
 		It("Should return 301 but has no location header", func() {

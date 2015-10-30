@@ -37,7 +37,7 @@ func clean(complete chan bool, c *exec.Cmd) {
 		select {
 		case <-complete:
 			{
-				go func() {
+				func() {
 					if c.Process != nil {
 						c.Process.Kill()
 					}
@@ -70,6 +70,8 @@ func (pg *phpProcessGroup) Spawn() {
 	pg.processes = a
 }
 
+var nilProcess *phpProcess
+
 func (pg *phpProcessGroup) Next() (p Process) {
 	pg.Lock()
 	defer pg.Unlock()
@@ -90,11 +92,12 @@ func (pg *phpProcessGroup) Clear() {
 	defer pg.Unlock()
 	defer func() {
 		if r := recover(); r != nil {
+			log.Println("error on stopping all processes")
 		}
 	}()
 
-	for _, p := range pg.processes {
-		p.Stop()
+	for i := range pg.processes {
+		pg.processes[i].Stop()
 	}
 }
 
