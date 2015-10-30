@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	. "github.com/sharpner/php-multiprocess-proxy"
 
@@ -50,6 +51,7 @@ var _ = Describe("Server", func() {
 
 		AfterSuite(func() {
 			log.Println("Running after Suite")
+			time.Sleep(200 * time.Millisecond)
 			pg.Clear()
 		})
 
