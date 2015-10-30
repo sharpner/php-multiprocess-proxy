@@ -7,12 +7,13 @@ import (
 	"log"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 )
 
 const (
 	//TimeOut in ms waits for the php server process
-	TimeOut = 90
+	TimeOut = 130
 	//NumProcesses is the total number of waiting php servers
 	NumProcesses = 7
 	//BindIP on which the server listens
@@ -33,14 +34,14 @@ func noRedirect(req *http.Request, via []*http.Request) error {
 	return err
 }
 
-func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
+func phpHandler(pg ProcessGroup, w http.ResponseWriter, r *http.Request) {
 	log.Println("starting server")
 	if pg == nil {
 		panic("pg must be set")
 	}
 
-	p := pg.next()
-	if p == nil {
+	p := pg.Next()
+	if p == nilProcess {
 		// we could spawn more processes here
 		// but if you have this error often
 		// its better to increase the queue size
@@ -51,11 +52,11 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		panic("out of processes")
 	}
 
-	defer func(p *phpProcess) {
-		go p.stop()
+	defer func(p Process) {
+		go p.Stop()
 	}(p)
 
-	requestURI := fmt.Sprintf("%s://%s:%d%s", ProxyProtocol, ProxyIP, p.port, r.RequestURI)
+	requestURI := fmt.Sprintf("%s://%s:%d%s", ProxyProtocol, ProxyIP, p.Port(), r.RequestURI)
 	log.Printf("child request url %s \n", requestURI)
 
 	req, err := http.NewRequest(r.Method, requestURI, r.Body)
@@ -76,18 +77,29 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		Jar:           jarCopy,
 		CheckRedirect: noRedirect,
 	}
+
 	req.Header = r.Header
 
 	log.Println("Making request")
 	resp, err := client.Do(req)
 	if err != nil {
+		if urlError, ok := err.(*url.Error); ok {
+			log.Println(urlError.Err)
+		}
+
 		if _, ok := err.(redirectNotAnError); ok {
+			if resp == nil {
+				w.WriteHeader(http.StatusBadGateway)
+				w.Write([]byte{})
+				return
+			}
+
 			for key := range resp.Header {
 				w.Header().Set(key, resp.Header.Get(key))
 			}
-
 			w.WriteHeader(resp.StatusCode)
 			w.Write([]byte{})
+
 			return
 		}
 
@@ -98,8 +110,6 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(key, resp.Header.Get(key))
 	}
 
-	defer p.stop()
-
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Print(err)
@@ -107,25 +117,28 @@ func phpHandler(pg *phpProcessGroup, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer resp.Body.Close()
+
 	w.WriteHeader(resp.StatusCode)
 	w.Write(data)
 }
 
 //NewPHPHTTPHandlerFunc returns a php proxy handler
-func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, error) {
+func NewPHPHTTPHandlerFunc(filename string) (http.HandlerFunc, ProcessGroup, error) {
 	if _, err := os.Stat(filename); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	pg := newProcessGroup(filename)
-	for i := 0; i < NumProcesses; i++ {
-		go pg.spawn()
+	for i := 0; i < NumProcesses-1; i++ {
+		go pg.Spawn()
 	}
 
-	pg.spawn()
+	pg.Spawn()
+	log.Println("All processes spawned.")
 	return func(w http.ResponseWriter, r *http.Request) {
 		phpHandler(pg, w, r)
-	}, nil
+	}, pg, nil
 }
 
 func main() {
@@ -134,14 +147,21 @@ func main() {
 		return
 	}
 
-	phpFunc, err := NewPHPHTTPHandlerFunc(os.Args[2])
+	phpFunc, pg, err := NewPHPHTTPHandlerFunc(os.Args[2])
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if pg != nil {
+		defer pg.Clear()
 	}
 
 	http.HandleFunc("/", phpFunc)
 
 	log.Printf("Serving %s on :%s\n", os.Args[2], os.Args[1])
 
-	http.ListenAndServe(":"+os.Args[1], nil)
+	err = http.ListenAndServe(":"+os.Args[1], nil)
+	if err != nil {
+		panic(err)
+	}
 }

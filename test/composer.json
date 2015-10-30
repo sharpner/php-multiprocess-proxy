@@ -1,0 +1,13 @@
+{
+    "name": "nwagensonner/test",
+    "authors": [
+        {
+            "name": "n.wagensonner",
+            "email": "n.wagensonner@manyminds.de"
+        }
+    ],
+    "require": 
+    {
+       "silex/silex": "~1.3"
+    }
+}

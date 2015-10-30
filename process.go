@@ -9,13 +9,26 @@ import (
 	"time"
 )
 
+//ProcessGroup can control
+type ProcessGroup interface {
+	Clear()
+	Spawn()
+	Next() Process
+}
+
+//Process interface
+type Process interface {
+	Port() int
+	Stop()
+}
+
 type phpProcessGroup struct {
 	sync.Mutex
 	processes []phpProcess
 	script    string
 }
 
-func newProcessGroup(script string) *phpProcessGroup {
+func newProcessGroup(script string) ProcessGroup {
 	return &phpProcessGroup{script: script}
 }
 
@@ -24,7 +37,7 @@ func clean(complete chan bool, c *exec.Cmd) {
 		select {
 		case <-complete:
 			{
-				go func() {
+				func() {
 					if c.Process != nil {
 						c.Process.Kill()
 					}
@@ -34,13 +47,12 @@ func clean(complete chan bool, c *exec.Cmd) {
 	}
 }
 
-func (pg *phpProcessGroup) spawn() {
+func (pg *phpProcessGroup) Spawn() {
 	p := phpProcess{}
 	p.done = make(chan bool)
 	port := nextPort()
 	p.port = port
-
-	log.Println("starting new process.")
+	log.Printf("starting new process %d\n", port)
 	args := []string{"-S", fmt.Sprintf("%s:%d", BindIP, port), pg.script}
 	go func(complete chan bool) {
 		cmd := exec.Command("php", args...)
@@ -58,7 +70,9 @@ func (pg *phpProcessGroup) spawn() {
 	pg.processes = a
 }
 
-func (pg *phpProcessGroup) next() (p *phpProcess) {
+var nilProcess *phpProcess
+
+func (pg *phpProcessGroup) Next() (p Process) {
 	pg.Lock()
 	defer pg.Unlock()
 	defer func() {
@@ -69,8 +83,22 @@ func (pg *phpProcessGroup) next() (p *phpProcess) {
 
 	p, a := &pg.processes[0], pg.processes[1:]
 	pg.processes = a
-	go pg.spawn()
+	go pg.Spawn()
 	return p
+}
+
+func (pg *phpProcessGroup) Clear() {
+	pg.Lock()
+	defer pg.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("error on stopping all processes")
+		}
+	}()
+
+	for i := range pg.processes {
+		pg.processes[i].Stop()
+	}
 }
 
 type phpProcess struct {
@@ -79,7 +107,11 @@ type phpProcess struct {
 	port    int
 }
 
-func (p *phpProcess) stop() {
+func (p phpProcess) Port() int {
+	return p.port
+}
+
+func (p *phpProcess) Stop() {
 	p.done <- true
 }
 
